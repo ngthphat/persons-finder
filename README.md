@@ -83,13 +83,6 @@ All responses must be in **valid JSON format**, following clean and consistent R
 
 ---
 
-## ✅ Getting Started
-
-```bash
-git clone https://github.com/leonardoduartelana/persons-finder.git
-cd persons-finder
-```
-
 Implement your solution and push it to your **own GitHub repository**.
 
 ---
