@@ -6,6 +6,9 @@ import com.persons.finder.data.Location
 import com.persons.finder.data.Person
 import com.persons.finder.presentation.dto.*
 import com.persons.finder.presentation.exception.ResourceNotFoundException
+import com.persons.finder.presentation.validation.ValidLatitude
+import com.persons.finder.presentation.validation.ValidLongitude
+import com.persons.finder.util.GeoUtils
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -16,6 +19,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 import javax.validation.Valid
 import javax.validation.constraints.Min
@@ -24,6 +28,7 @@ import javax.validation.constraints.NotNull
 @RestController
 @RequestMapping("api/v1/persons")
 @Tag(name = "Persons", description = "Persons API")
+@Validated
 class PersonController @Autowired constructor(
     private val personsService: PersonsService,
     private val locationsService: LocationsService
@@ -76,27 +81,23 @@ class PersonController @Autowired constructor(
         @Parameter(description = "Person ID", required = true) @PathVariable id: Long,
         @Valid @RequestBody locationRequest: LocationRequestDto
     ): ResponseEntity<Unit> {
-        try {
-            // Check if a person exists
-            personsService.getById(id)
 
-            val location = Location(
-                id = 0, // ID will be assigned by the database
-                referenceId = id,
-                latitude = locationRequest.latitude,
-                longitude = locationRequest.longitude
-            )
+        personsService.getById(id)
 
-            locationsService.addLocation(location)
-            return ResponseEntity.ok().build()
-        } catch (e: Exception) {
-            throw ResourceNotFoundException("Person with ID $id not found")
-        }
+        val location = Location(
+            id = 0, // ID will be assigned by the database
+            referenceId = id,
+            latitude = locationRequest.latitude,
+            longitude = locationRequest.longitude
+        )
+
+        locationsService.addLocation(location)
+        return ResponseEntity.noContent().build()
     }
 
     @Operation(
         summary = "Find nearby persons",
-        description = "Finds persons around a query location within a specified radius"
+        description = "Finds persons around a query location within a specified radius, sorted by distance"
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Successfully retrieved list of nearby persons"),
@@ -108,17 +109,59 @@ class PersonController @Autowired constructor(
     )
     @GetMapping("/nearby")
     fun findNearbyPersons(
-        @Parameter(description = "Latitude", required = true) @RequestParam @NotNull lat: Double,
-        @Parameter(description = "Longitude", required = true) @RequestParam @NotNull lon: Double,
-        @Parameter(
-            description = "Radius in kilometers",
-            required = true
-        ) @RequestParam @NotNull @Min(0) radiusKm: Double
-    ): ResponseEntity<NearbyPersonsResponseDto> {
-        val nearbyLocations = locationsService.findAround(lat, lon, radiusKm)
-        val personIds = nearbyLocations.map { it.referenceId }
+        @Parameter(description = "Latitude", required = true)
+        @RequestParam
+        @NotNull
+        @ValidLatitude
+        lat: Double,
 
-        return ResponseEntity.ok(NearbyPersonsResponseDto(personIds))
+        @Parameter(description = "Longitude", required = true)
+        @RequestParam
+        @NotNull
+        @ValidLongitude
+        lon: Double,
+
+        @Parameter(description = "Radius in kilometers", required = true)
+        @RequestParam
+        @NotNull
+        @Min(0)
+        radiusKm: Double
+    ): ResponseEntity<NearbyPersonsResponseDto> {
+        // Find nearby locations
+        val nearbyLocations = locationsService.findAround(lat, lon, radiusKm)
+        
+        // Get person IDs from locations
+        val personIds = nearbyLocations.map { it.referenceId }
+        
+        // Get person details
+        val persons = if (personIds.isNotEmpty()) {
+            personsService.getByIds(personIds)
+        } else {
+            emptyList()
+        }
+
+        // Create response DTOs with person info, locations, and distances
+        val nearbyPersons = persons.mapNotNull { person ->
+            // Find the location for this person
+            val location = nearbyLocations.find { it.referenceId == person.id }
+            location?.let {
+                val distance = GeoUtils.calculateDistance(
+                    lat1 = lat,
+                    lon1 = lon,
+                    lat2 = it.latitude,
+                    lon2 = it.longitude
+                )
+                NearbyPersonDto(
+                    id = person.id,
+                    name = person.name,
+                    latitude = it.latitude,
+                    longitude = it.longitude,
+                    distanceKm = distance
+                )
+            }
+        }.sortedBy { it.distanceKm } // Sort by distance
+
+        return ResponseEntity.ok(NearbyPersonsResponseDto(nearbyPersons))
     }
 
     @Operation(summary = "Get persons by IDs", description = "Retrieves one or more persons by their IDs")
@@ -139,22 +182,24 @@ class PersonController @Autowired constructor(
     fun getPersonsByIds(
         @Parameter(description = "Person IDs", required = true) @RequestParam id: List<Long>
     ): ResponseEntity<List<PersonResponseDto>> {
+
         if (id.isEmpty()) {
             return ResponseEntity.badRequest().build()
         }
 
-        val persons = id.map {
-            try {
-                val person = personsService.getById(it)
-                PersonResponseDto(
-                    id = person.id,
-                    name = person.name
-                )
-            } catch (e: Exception) {
-                throw ResourceNotFoundException("Person with ID $it not found")
-            }
+        val persons = personsService.getByIds(id)
+
+        if (persons.size != id.size) {
+            throw ResourceNotFoundException("One or more persons not found")
         }
 
-        return ResponseEntity.ok(persons)
+        val personDtos = persons.map { person ->
+            PersonResponseDto(
+                id = person.id,
+                name = person.name
+            )
+        }
+
+        return ResponseEntity.ok(personDtos)
     }
 }

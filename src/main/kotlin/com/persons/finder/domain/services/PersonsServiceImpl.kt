@@ -12,11 +12,14 @@ class PersonsServiceImpl @Autowired constructor(
 ) : PersonsService {
 
     override fun getById(id: Long): Person {
-        return personRepository.findById(id)
-            .orElseThrow { ResourceNotFoundException("Person with ID $id not found") }
+        return personRepository.findById(id).orElseThrow { ResourceNotFoundException("Person with ID $id not found") }
     }
 
     override fun save(person: Person) {
         personRepository.save(person)
+    }
+
+    override fun getByIds(ids: List<Long>): List<Person> {
+        return personRepository.findAllById(ids).toList()
     }
 }

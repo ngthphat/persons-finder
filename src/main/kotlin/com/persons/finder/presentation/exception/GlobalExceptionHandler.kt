@@ -25,9 +25,22 @@ class GlobalExceptionHandler {
         val errorResponse = ErrorResponseDto(
             status = HttpStatus.NOT_FOUND.value(),
             message = "Resource Not Found",
-            details = ex.message ?: "The requested resource was not found"
+            details = ex.message
         )
         return ResponseEntity(errorResponse, HttpStatus.NOT_FOUND)
+    }
+
+    /**
+     * Handle InvalidCoordinateException
+     */
+    @ExceptionHandler(InvalidCoordinateException::class)
+    fun handleInvalidCoordinateException(ex: InvalidCoordinateException): ResponseEntity<ErrorResponseDto> {
+        val errorResponse = ErrorResponseDto(
+            status = HttpStatus.BAD_REQUEST.value(),
+            message = "Coordinate is invalid",
+            details = ex.message ?: "Coordinate is invalid"
+        )
+        return ResponseEntity(errorResponse, HttpStatus.BAD_REQUEST)
     }
 
     /**
