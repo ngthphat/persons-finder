@@ -1,5 +1,6 @@
 package com.persons.finder.data
 
+import org.locationtech.jts.geom.Point // Import JTS Point
 import javax.persistence.*
 
 @Entity
@@ -13,9 +14,15 @@ data class Location(
     @Column(nullable = false)
     val referenceId: Long,
 
-    @Column(nullable = false)
-    val latitude: Double,
 
-    @Column(nullable = false)
-    val longitude: Double
-)
+    @Column(columnDefinition = "GEOMETRY(Point, 4326)", nullable = false)
+    val geom: Point) {
+
+        val latitude: Double
+            get() = geom.y
+
+        val longitude: Double
+            get() = geom.x
+    }
+
+

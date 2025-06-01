@@ -39,6 +39,7 @@ class PersonControllerIntegrationTest {
     @BeforeEach
     fun setup() {
         // Clear the database before each test
+        locationRepository.deleteAll()
         personRepository.deleteAll()
     }
 

@@ -16,6 +16,9 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.locationtech.jts.geom.Coordinate
+import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.geom.PrecisionModel
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -31,7 +34,8 @@ import javax.validation.constraints.NotNull
 @Validated
 class PersonController @Autowired constructor(
     private val personsService: PersonsService,
-    private val locationsService: LocationsService
+    private val locationsService: LocationsService,
+    private val geometryFactory: GeometryFactory
 ) {
 
     @Operation(summary = "Create a new person", description = "Creates a new person with the provided name")
@@ -82,13 +86,15 @@ class PersonController @Autowired constructor(
         @Valid @RequestBody locationRequest: LocationRequestDto
     ): ResponseEntity<Unit> {
 
-        personsService.getById(id)
+        personsService.getById(id) // Check if person exists
+
+        // For simplicity, let's assume the DTO layer will handle Point creation.
+        val point = geometryFactory.createPoint(Coordinate(locationRequest.longitude, locationRequest.latitude))
 
         val location = Location(
             id = 0, // ID will be assigned by the database
             referenceId = id,
-            latitude = locationRequest.latitude,
-            longitude = locationRequest.longitude
+            geom = point // Set the JTS Point
         )
 
         locationsService.addLocation(location)
@@ -127,24 +133,22 @@ class PersonController @Autowired constructor(
         @Min(0)
         radiusKm: Double
     ): ResponseEntity<NearbyPersonsResponseDto> {
-        // Find nearby locations
+
         val nearbyLocations = locationsService.findAround(lat, lon, radiusKm)
-        
-        // Get person IDs from locations
+
         val personIds = nearbyLocations.map { it.referenceId }
-        
-        // Get person details
+
         val persons = if (personIds.isNotEmpty()) {
             personsService.getByIds(personIds)
         } else {
             emptyList()
         }
+        // TODO optimize this to get location and person in one query
 
-        // Create response DTOs with person info, locations, and distances
         val nearbyPersons = persons.mapNotNull { person ->
-            // Find the location for this person
             val location = nearbyLocations.find { it.referenceId == person.id }
             location?.let {
+
                 val distance = GeoUtils.calculateDistance(
                     lat1 = lat,
                     lon1 = lon,
@@ -159,7 +163,7 @@ class PersonController @Autowired constructor(
                     distanceKm = distance
                 )
             }
-        }.sortedBy { it.distanceKm } // Sort by distance
+        }.sortedBy { it.distanceKm }
 
         return ResponseEntity.ok(NearbyPersonsResponseDto(nearbyPersons))
     }

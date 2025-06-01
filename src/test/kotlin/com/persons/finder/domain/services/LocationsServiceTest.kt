@@ -1,17 +1,26 @@
 package com.persons.finder.domain.services
 
 import com.persons.finder.data.Location
+import com.persons.finder.data.Person
 import com.persons.finder.data.repository.LocationRepository
+import com.persons.finder.data.repository.PersonRepository
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.TestInstance
+import org.locationtech.jts.geom.Coordinate
+import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.geom.PrecisionModel
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.support.TransactionTemplate
 import kotlin.math.abs
+import kotlin.properties.Delegates
 
 @SpringBootTest
 @ActiveProfiles("test")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LocationsServiceTest {
 
     @Autowired
@@ -21,7 +30,20 @@ class LocationsServiceTest {
     private lateinit var locationRepository: LocationRepository
 
     @Autowired
-    private lateinit var transactionTemplate: TransactionTemplate
+    private lateinit var personRepository: PersonRepository
+
+    private val geometryFactory: GeometryFactory = GeometryFactory(PrecisionModel(), 4326)
+
+    @BeforeAll
+    fun setupStaticPersons() {
+        // Clean the person repository once to ensure predictable IDs for static data
+        personRepository.deleteAll()
+        // Create Person entities that will be available for all tests in this class.
+
+        personRepository.save(Person(name = "STATIC_PERSON_1"))
+        personRepository.save(Person(name = "STATIC_PERSON_2"))
+        personRepository.save(Person(name = "STATIC_PERSON_3"))
+    }
 
 
     @BeforeEach
@@ -32,11 +54,12 @@ class LocationsServiceTest {
 
     @Test
     fun `should add and find location successfully`() {
+
+
         // Create a test location (Britomart Auckland)
         val location = Location(
             referenceId = 1L,
-            latitude = -36.844044,
-            longitude = 174.767208
+            geom = geometryFactory.createPoint(Coordinate(174.767208, -36.844044))
         )
 
         // Add the location
@@ -58,13 +81,12 @@ class LocationsServiceTest {
         // Add two locations: Quay Street Waterfront and MOTAT Museum
         val quayStreet = Location(
             referenceId = 1L,
-            latitude = -36.842797,
-            longitude = 174.765982
+            geom = geometryFactory.createPoint(Coordinate(174.765982, -36.842797))
         )
+
         val motatMuseum = Location(
             referenceId = 2L,
-            latitude = -36.867703,
-            longitude = 174.727072
+            geom = geometryFactory.createPoint(Coordinate(174.727072, -36.867703))
         )
 
         locationsService.addLocation(quayStreet)
@@ -83,9 +105,9 @@ class LocationsServiceTest {
         // Create and add a test location
         val location = Location(
             referenceId = 1L,
-            latitude = -36.842797,
-            longitude = 174.765982
+            geom = geometryFactory.createPoint(Coordinate(174.765982, -36.842797))
         )
+
         locationsService.addLocation(location)
 
         val existingLocation = locationsService.findAround(-36.842797, 174.765982, 2.0)
@@ -104,23 +126,20 @@ class LocationsServiceTest {
         // Create initial location Auckland Sky Tower
         val skyTowerLocation = Location(
             referenceId = 1L,
-            latitude = -36.848320,
-            longitude = 174.762327
+            geom = geometryFactory.createPoint(Coordinate(174.762327, -36.848320))
         )
         locationsService.addLocation(skyTowerLocation)
 
         // Update location (move to Britomart Auckland)
         val britomartLocation = Location(
             referenceId = 1L,
-            latitude = -36.844044,
-            longitude = 174.767208
+            geom = geometryFactory.createPoint(Coordinate(174.767208, -36.844044))
         )
         locationsService.addLocation(britomartLocation)
 
         val commercialBayLocation = Location(
             referenceId = 1L,
-            latitude = -36.843934,
-            longitude = 174.766122
+            geom = geometryFactory.createPoint(Coordinate(174.766122, -36.843934))
         )
 
         // Find updated location around Commercial Bay
@@ -129,7 +148,7 @@ class LocationsServiceTest {
             commercialBayLocation.longitude,
             2.0
         )
-        
+
         assert(foundLocations.isNotEmpty()) { "Expected to find updated location" }
         val foundLocation = foundLocations.first()
         assert(foundLocation.referenceId == 1L) { "Expected to find location with referenceId 1" }
